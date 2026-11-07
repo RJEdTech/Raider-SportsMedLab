@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const {clamp,rr,txt,pill,atLeast,PAL,FONT,axes,legend,fmtNum}=BioLab.h;
+const {clamp,rng,rr,txt,pill,atLeast,PAL,FONT,axes,legend,fmtNum}=BioLab.h;
 
 /* Pace, minutes and injuries. ILLUSTRATIVE season model, anchored to one verified rate.
    Exposures: possessions a player is on the court for. A game at pace P has about 2P possessions (P each way),
@@ -26,7 +26,8 @@ const truth=sim=>{const q=ratio(sim);return q>1.05?'more':q<0.95?'fewer':'same';
 const key=sim=>[sim.p.pace,sim.p.min,sim.p.rest,beta(sim),fat(sim)].join('|');
 const BTN=[['more','More injuries'],['same','About the same'],['fewer','Fewer injuries']];
 const CALLW={more:'more injuries',same:'about the same',fewer:'fewer injuries'};
-const shown=sim=>sim.st&&sim.st.revealed;
+const shown=sim=>!!(sim.st&&sim.st.revealed);
+const fresh=sim=>{sim.st.revealed=false;sim.st.call=null;sim.st.yt=null;};
 const callNow=sim=>{const c=sim.st&&sim.st.call;return c&&c.key===key(sim)?c:null;};
 const f0=v=>fmtNum(v,0),f1=v=>fmtNum(v,1),f2=v=>fmtNum(v,2),f3=v=>fmtNum(v,3);
 const acC=sim=>4*sim.p.wkNow/(sim.p.wkNow+3*sim.p.wkPrev);
@@ -37,17 +38,71 @@ function wrap(ctx,s,x,y,w,o){o=o||{};const size=o.s||13,lh=o.lh||size*1.3;ctx.fo
   String(s).split(' ').forEach(word=>{const t=line?line+' '+word:word;if(ctx.measureText(t).width>w&&line){txt(ctx,line,x,yy,{s:size,w:o.w,c:o.c,a:o.a});yy+=lh;line=word;}else line=t;});
   if(line){txt(ctx,line,x,yy,{s:size,w:o.w,c:o.c,a:o.a});yy+=lh;}return yy;}
 const geo=k=>{const sH=Math.max(46,30*k+16);return {sH,sY:450-12-sH};};
+/* ---------- Your turn: possessions your player is on the court for, E = 2 × pace × minutes ÷ 48 ---------- */
+const eLine=pl=>'2 × '+pl.pace+' × '+pl.min+' ÷ 48 = '+f1(2*pl.pace*pl.min/48);
+const YT={
+  key:sim=>key(sim),
+  ans:sim=>2*sim.p.pace*sim.p.min/48,
+  tol:()=>0.6,
+  fmt:v=>v.toFixed(1),
+  line:sim=>eLine(sim.p),
+  wrong:sim=>{const P=sim.p.pace,M=sim.p.min;return [P*M/48,2*P*48/M,2*P,2*P*M/60,P*M/24/2];}
+};
+/* ---------- Your turn, shared machinery: the student computes one number for this case before the call ----------
+   YT (defined above) gives the key, answer, tolerance, format and common-slip choices. Canvas buttons are bare numbers;
+   they set the `ans` control and submit it. One retry after a wrong answer; a second wrong answer shows the worked math.
+   Then the call, then the reveal with the formula and this case's numbers. */
+const hashS=s=>{let h=7;for(const c of String(s))h=(h*31+c.charCodeAt(0))%2147483647;return h||1;};
+const ytNow=sim=>{const y=sim.st&&sim.st.yt;return y&&y.key===YT.key(sim)?y:null;};
+const ytDone=sim=>{const y=ytNow(sim);return !!(y&&y.done);};
+function ytChoices(sim){const a=YT.ans(sim),t=YT.tol(sim),f=YT.fmt,seen=new Set([f(a)]),out=[a];
+  const add=v=>{if(out.length<4&&Number.isFinite(v)&&(YT.neg||v>0)&&!seen.has(f(v))&&Math.abs(v-a)>t*1.5){seen.add(f(v));out.push(v);}};
+  YT.wrong(sim).forEach(add);[1.25,0.8,1.5,0.6,2,0.5].forEach(m=>add(a*m));[1,-1,2,-2,3].forEach(d=>add(a+d*Math.max(t*4,0.5)));
+  const r=rng(hashS(YT.key(sim)));for(let i=out.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[out[i],out[j]]=[out[j],out[i]];}return out;}
+function ytSubmit(sim,v){let y=ytNow(sim);if(!y){y={key:YT.key(sim),tries:[],done:false,ok:false};sim.st.yt=y;}if(y.done)return;
+  y.tries.push(v);if(Math.abs(v-YT.ans(sim))<=YT.tol(sim)+1e-9){y.ok=true;y.done=true;}else if(y.tries.length>=2)y.done=true;}
+function ytVerdict(sim){const y=ytNow(sim);if(!y||!y.tries.length)return '';const last=y.tries[y.tries.length-1];
+  return 'Your answer: '+YT.fmt(last)+(YT.unit||'')+'. '+(y.ok?'Correct: ':'The math: ')+YT.line(sim)+'.';}
+function ytShort(sim){const y=ytNow(sim);if(!y||!y.tries.length)return '';const last=y.tries[y.tries.length-1];return 'Your answer: '+YT.fmt(last)+(YT.unit||'')+(y.ok?', correct.':'; the math gives '+YT.fmt(YT.ans(sim))+(YT.unit||'')+'.');}
+/* bottom strip: lines of text, then a row of buttons. Measured first so the drawing above can make room. */
+function nLines(ctx,s,w,size,wt){ctx.font=(wt||400)+' '+size+'px '+FONT;let n=0,line='';String(s).split(' ').forEach(word=>{const t=line?line+' '+word:word;if(ctx.measureText(t).width>w&&line){n++;line=word;}else line=t;});return n+(line?1:0);}
+function stripPlan(ctx,k,w,parts,btns){let h=10;parts=parts.filter(p=>p&&p.t);parts.forEach(p=>{p.n=nLines(ctx,p.t,w-24,p.s,p.w);h+=p.n*p.s*1.3;});const bh=btns&&btns.length?Math.min(44,24*k+12):0;if(bh)h+=bh+8;return {parts,btns:btns||[],bh,h:h+8};}
+function stripDraw(ctx,sim,P,x0,x1,y0,k){ctx.fillStyle=PAL['card2'];rr(ctx,x0,y0,x1-x0,P.h,10);ctx.fill();let y=y0+10;
+  P.parts.forEach(p=>{y=wrap(ctx,p.t,x0+12,y+p.s,x1-x0-24,{s:p.s,w:p.w,c:p.c})-p.s;});
+  sim.vis.ytR=[];sim.vis.callR=[];if(!P.btns.length)return;const g=8,n=P.btns.length,bw=(x1-x0-24-g*(n-1))/n,by=y+6;
+  P.btns.forEach((b,i)=>{const bx=x0+12+i*(bw+g);ctx.fillStyle=PAL[b.off?'card2':'card'];rr(ctx,bx,by,bw,P.bh,9);ctx.fill();ctx.strokeStyle=b.off?PAL['line']:PAL['rj'];ctx.lineWidth=2;ctx.stroke();
+    ctx.font='700 '+(12*k)+'px '+FONT;let l=b.l;if(b.short&&ctx.measureText(l).width>bw-10)l=b.short;
+    txt(ctx,l,bx+bw/2,by+P.bh/2+1,{s:(b.kind==='yt'?13:12)*k,w:b.kind==='yt'?800:700,a:'center',b:'middle',c:b.off?PAL['cv-soft']:PAL['cv-ink']});
+    if(!b.off)(b.kind==='yt'?sim.vis.ytR:sim.vis.callR).push([bx,by,bw,P.bh,b.v]);});}
+function ytButtons(sim){const y=ytNow(sim);return ytChoices(sim).map(v=>({l:YT.fmt(v),v,kind:'yt',off:!!(y&&y.tries.some(t=>Math.abs(t-v)<1e-9))}));}
+function stripClick(sim,x,y){const hit=R=>(R||[]).find(r=>x>=r[0]&&x<=r[0]+r[2]&&y>=r[1]-4&&y<=r[1]+r[3]+4);
+  const a=hit(sim.vis&&sim.vis.ytR);if(a){BioLab.setValues(sim,{ans:a[4]});ytSubmit(sim,a[4]);sim.vis.ytR=null;return true;}
+  const c=hit(sim.vis&&sim.vis.callR);if(c){BioLab.setValues(sim,{call:c[4]});SIM.actions.find(a=>a.id==='lock').run(sim);sim.vis.callR=null;return true;}return false;}
+
 
 /* Verified league averages (Basketball-Reference). [season end year, pace, 3PA share of FGA] */
 const PACE=[[1962,126.2],[1966,121.4],[1971,115.1],[1974,107.8],[1975,104.5],[1976,105.5],[1977,106.5],[1978,106.7],[1979,105.8],[1980,103.1],[1981,101.8],[1982,100.9],[1983,103.1],[1984,101.4],[1985,102.1],[1986,102.1],[1987,100.8],[1988,99.6],[1989,100.6],[1990,98.3],[1991,97.8],[1992,96.6],[1993,96.8],[1994,95.1],[1995,92.9],[1996,91.8],[1997,90.1],[1998,90.3],[1999,88.9],[2000,93.1],[2001,91.3],[2002,90.7],[2003,91.0],[2004,90.1],[2005,90.9],[2006,90.5],[2007,91.9],[2008,92.4],[2009,91.7],[2010,92.7],[2011,92.1],[2012,91.3],[2013,92.0],[2014,93.9],[2015,93.9],[2016,95.8],[2017,96.4],[2018,97.3],[2019,100.0],[2020,100.3],[2021,99.2],[2022,98.2],[2023,99.2],[2024,98.5],[2025,98.8],[2026,99.4]];
 const THREE=[[1980,2.8,90.6],[1981,2.0,88.4],[1982,2.3,88.2],[1983,2.3,89.7],[1984,2.4,88.4],[1985,3.1,89.1],[1986,3.3,88.6],[1987,4.7,88.8],[1988,5.0,87.7],[1989,6.6,89.0],[1990,6.6,87.2],[1991,7.1,87.2],[1992,7.6,87.3],[1993,9.0,86.0],[1994,9.9,84.4],[1995,15.3,81.5],[1996,16.0,80.2],[1997,16.8,79.3],[1998,12.7,79.7],[1999,13.2,78.2],[2000,13.7,82.1],[2001,13.7,80.6],[2002,14.7,81.3],[2003,14.7,80.8],[2004,14.9,79.8],[2005,15.8,80.3],[2006,16.0,79.0],[2007,16.9,79.7],[2008,18.1,81.5],[2009,18.1,80.9],[2010,18.1,81.7],[2011,18.0,81.2],[2012,18.4,81.4],[2013,20.0,82.0],[2014,21.5,83.0],[2015,22.4,83.6],[2016,24.1,84.6],[2017,27.0,85.4],[2018,29.0,86.1],[2019,32.0,89.2],[2020,34.1,88.8],[2021,34.6,88.4],[2022,35.2,88.1],[2023,34.2,88.3],[2024,35.1,88.9],[2025,37.6,89.2],[2026,37.0,89.1]];
 const COLREF='s2',COLME='s6';
 
+function plan(sim,ctx,k,w){const y=ytNow(sim),c=callNow(sim),big=k>1.3,S=12*k,M=13*k,p=sim.p;
+  if(!shown(sim)&&!ytDone(sim)){const retry=y&&y.tries.length;
+    if(big)return stripPlan(ctx,k,w,[{t:'Your turn: possessions = 2 × '+p.pace+' × '+p.min+' ÷ 48 = ?',s:M,w:800},{t:retry?'Not quite. Multiply, then ÷ 48.':'',s:S,w:600,c:PAL['s1']}],ytButtons(sim));
+    return stripPlan(ctx,k,w,[{t:'Your turn: your plan is pace '+p.pace+' with '+p.min+' minutes a game. A game has about 2 × pace possessions, and your player is out there minutes ÷ 48 of it.',s:M,w:800},
+      {t:retry?'Not quite. Multiply 2 × pace × minutes, then divide by 48.':'Possessions on the court = 2 × pace × minutes ÷ 48. The slow plan: '+eLine(REF)+'. What is yours?',s:S,w:600,c:retry?PAL['s1']:PAL['cv-soft']}],ytButtons(sim));}
+  if(!shown(sim)){const yy=ytNow(sim);return stripPlan(ctx,k,w,[{t:ytVerdict(sim),s:S,w:700,c:yy.ok?PAL['s3']:PAL['s1']},{t:'Now your call: compared with the slow plan, your plan causes…',s:S,w:800}],BTN.map(b=>({l:b[1],v:b[0],kind:'call'})));}
+  const a=ref(sim),m=mine(sim),d=a.missed-m.missed;
+  const l1='Possessions: yours '+eLine(p)+'; slow plan '+eLine(REF)+'.';
+  const l2='Injuries a game = risk per possession × possessions: ×'+f2(m.r/R0)+' × '+f1(m.E)+' vs. ×'+f2(a.r/R0)+' × '+f1(a.E)+' (risk relative to a 34-minute player).';
+  const l3=(ytShort(sim)&&!big?ytShort(sim)+' ':'')+(c?('Your call: '+CALLW[c.pick]+'. '+(c.pick===c.truth?'That matches the model. ':'Not quite. ')):'')+'Your plan: '+f2(m.inj)+' injuries vs. '+f2(a.inj)+'. Games missed: '+f1(m.missed)+' vs. '+f1(a.missed)+(Math.abs(d)<0.05?', the same.':d>0?', '+f1(d)+' fewer.':', '+f1(-d)+' more.');
+  if(big)return stripPlan(ctx,k,w,[{t:'Yours: '+eLine(p),s:S,w:800,c:PAL[COLME]},{t:(c?(c.pick===c.truth?'Your call matches. ':'Not quite. '):'')+'Games missed: '+f1(m.missed)+' vs. '+f1(a.missed)+'.',s:S,w:700,c:c&&c.pick!==c.truth?PAL['s1']:PAL['cv-ink']}],null);
+  return stripPlan(ctx,k,w,[{t:l1,s:S,w:800,c:PAL[COLME]},{t:l2,s:S,w:600,c:PAL['cv-soft']},{t:l3,s:S,w:700,c:c&&c.pick!==c.truth?PAL['s1']:PAL['cv-ink']}],null);}
+
 const SIM={
- id:'paceload',hash:'paceload',apUnit:1,order:3,kind:'Simulation',tab:'Pace, minutes and injuries',prereq:['injury'],
+ id:'paceload',hash:'paceload',yt:YT,apUnit:1,order:3,kind:'Simulation',tab:'Pace, minutes and injuries',prereq:['injury'],
  card:'Plan a season: set the pace and a top player’s minutes, guess the injury cost, then count exposures to see who really misses more games.',
  title:'Pace, minutes and injuries',
- lede:{bio:'People say today’s basketball is faster and harder on bodies than ever. Set your team’s pace and your best player’s minutes, guess whether that plan causes more or fewer injuries than a slow, long-minutes plan, then count the games missed.',
+ lede:{bio:'The math: rates per exposure, exposures = 2 × pace × minutes ÷ 48 (Sports Medicine: injury prevention and workload). People say today’s basketball is faster and harder on bodies than ever. Set your team’s pace and your best player’s minutes, guess whether that plan causes more or fewer injuries than a slow, long-minutes plan, then count the games missed.',
   honors:'An injury count depends on how many exposures a player gets. Compare injuries per season with injuries per 1,000 games and per 1,000 possessions, and see why a faster pace can raise the count without making any single play riskier.',
   ap:'Injuries per season = risk per possession × possessions per game × games played. Change how fatigue enters the risk function, then test the acute:chronic workload ratio and why researchers argue about it.'},
  scale:'One 82-game season for one player. A possession is one trip down the floor by one team; pace is possessions per team per 48 minutes.',
@@ -56,6 +111,7 @@ const SIM={
   {id:'pace',label:'Your team’s pace (possessions per 48 minutes)',type:'range',min:85,max:130,step:1,def:100,help:'The league average was 99.4 in 2025-26 and 90.1 in 2003-04.'},
   {id:'min',label:'Your top player’s minutes per game',type:'range',min:20,max:48,step:1,def:34,unit:'min',help:'A game is 48 minutes. The league’s minutes leader averaged 38.0 in 2025-26.'},
   {id:'rest',label:'Healthy rest games (sits out to rest)',type:'range',min:0,max:20,step:1,def:0,help:'Rest games count as games missed, too.'},
+  {id:'ans',label:'Your answer: possessions your player is on the court for each game (Your turn on the canvas)',type:'range',min:0,max:260,step:0.1,def:100,d:1,noTrial:true,help:'2 × pace × minutes ÷ 48. Set it, then press Lock in my answer.'},
   {id:'call',label:'Your call: compared with the slow plan (pace 90, 40 minutes), your plan causes…',type:'seg',def:'more',noTrial:true,options:BTN.map(b=>({v:b[0],l:b[1]})),help:'Make your call before you look, then press Lock in my call.'},
   {id:'view',label:'Show',type:'seg',def:'season',lvl:'ap',noTrial:true,options:[{v:'season',l:'Season plans'},{v:'acwr',l:'Workload ratio'}]},
   {id:'beta',label:'How strongly fatigue raises risk per possession (assumption)',type:'range',min:0,max:2,step:0.25,def:1,d:2,lvl:'ap',help:'0 means every possession is equally risky. 1 means 10% more fatigue makes each possession 10% riskier.'},
@@ -64,20 +120,21 @@ const SIM={
   {id:'wkNow',label:'Your training this week (minutes)',type:'range',min:0,max:900,step:10,def:450,lvl:'ap',help:'Your own numbers stay in this browser tab.'}
  ],
  actions:[
+  {id:'ytlock',label:'Lock in my answer',run(sim){ytSubmit(sim,sim.p.ans);}},
   {id:'lock',label:'Lock in my call',primary:true,run(sim){sim.st.call={pick:sim.p.call,key:key(sim),truth:truth(sim)};sim.st.revealed=true;}},
   {id:'show',label:'Show the math',run(sim){sim.st.revealed=true;}},
-  {id:'hide',label:'New call: hide the results',run(sim){sim.st.revealed=false;sim.st.call=null;}},
-  {id:'today',label:'Case: today’s pace, shorter minutes',run(sim){BioLab.setValues(sim,{pace:99,min:34,rest:0,view:'season'});sim.st.revealed=false;sim.st.call=null;}},
-  {id:'sixties',label:'Case: 1960s pace, nearly full games',run(sim){BioLab.setValues(sim,{pace:126,min:46,rest:0,view:'season'});sim.st.revealed=false;sim.st.call=null;}},
-  {id:'resting',label:'Case: rest 10 healthy games',run(sim){BioLab.setValues(sim,{pace:100,min:34,rest:10,view:'season'});sim.st.revealed=false;sim.st.call=null;}}
+  {id:'hide',label:'New call: hide the results',run(sim){fresh(sim);}},
+  {id:'today',label:'Case: today’s pace, shorter minutes',run(sim){BioLab.setValues(sim,{pace:99,min:34,rest:0,view:'season'});fresh(sim);}},
+  {id:'sixties',label:'Case: 1960s pace, nearly full games',run(sim){BioLab.setValues(sim,{pace:126,min:46,rest:0,view:'season'});fresh(sim);}},
+  {id:'resting',label:'Case: rest 10 healthy games',run(sim){BioLab.setValues(sim,{pace:100,min:34,rest:10,view:'season'});fresh(sim);}}
  ],
- init(){return {revealed:false,call:null};},step(){},
+ init(){return {revealed:false,call:null,yt:null};},step(){},
  metrics:[
   {id:'gm',label:'Games missed per season, your plan',unit:'games',d:1,min:0,max:null,get:sim=>mine(sim).missed},
   {id:'gmRef',label:'Games missed per season, slow plan',unit:'games',d:1,min:0,max:null,get:sim=>ref(sim).missed},
   {id:'inj',label:'Injuries per season, your plan',unit:'',d:2,min:0,max:null,get:sim=>mine(sim).inj},
   {id:'injRef',label:'Injuries per season, slow plan',unit:'',d:2,min:0,max:null,get:sim=>ref(sim).inj},
-  {id:'poss',label:'Possessions played per game, your plan',unit:'',d:1,min:0,max:null,get:sim=>mine(sim).E},
+  {id:'poss',label:'Possessions played per game, your plan',unit:'',d:1,min:0,max:null,get:sim=>shown(sim)?mine(sim).E:null},
   {id:'ig',label:'Games missed to injury, your plan',unit:'games',d:1,lvl:'honors',min:0,max:null,get:sim=>mine(sim).ig},
   {id:'per1000g',label:'Injuries per 1,000 games played',unit:'',d:1,lvl:'honors',min:0,max:null,get:sim=>mine(sim).lam*1000},
   {id:'per1000p',label:'Injuries per 1,000 possessions',unit:'',d:3,lvl:'honors',min:0,max:null,get:sim=>mine(sim).r*1000},
@@ -111,7 +168,7 @@ const SIM={
   legend(ctx,box.L+12,box.T+12,[{label:'Your plan: pace '+sim.p.pace+(sim.p.rest?', '+sim.p.rest+' rest games':''),color:PAL[COLME]}]);legend(ctx,box.L+12,box.T+32,[{label:'Slow plan: pace 90, no rest',color:PAL[COLREF]}]);},
  draw(sim,ctx,vdt,k){const W=800,H=450;sim.vis.k=k;ctx.fillStyle=PAL['cv-bg'];ctx.fillRect(0,0,W,H);
   if(view(sim)==='acwr'){drawACWR(sim,ctx,k);return;}
-  const sh=shown(sim),big=k>1.3,X0=16,X1=784,{sH,sY}=geo(k);
+  const sh=shown(sim),big=k>1.3,X0=16,X1=784,PS=plan(sim,ctx,k,X1-X0),sY=450-12-PS.h;
   const ty=16+13*k;txt(ctx,fitTxt(ctx,['Two season plans for a top player: 82 games each','Two plans, 82 games each','Two plans'],X1-X0,13*k,800),X0,ty,{s:13*k,w:800});
   const cT=ty+10,cB=sY-10,cw=(X1-X0-16)/2,plans=[{nm:'Slow plan',pl:REF,m:ref(sim),col:COLREF,x:X0},{nm:'Your plan',pl:{pace:sim.p.pace,min:sim.p.min,rest:sim.p.rest},m:mine(sim),col:COLME,x:X0+cw+16}];
   plans.forEach(P=>{const x0=P.x+12,x1=P.x+cw-12,iw=x1-x0,col=PAL[P.col];ctx.fillStyle=PAL['card'];rr(ctx,P.x,cT,cw,cB-cT,10);ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
@@ -120,8 +177,9 @@ const SIM={
    const ir=7*k;ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x1-ir,y-5*k,ir,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(x1-2*ir,y-5*k);ctx.lineTo(x1,y-5*k);ctx.moveTo(x1-ir,y-5*k-ir);ctx.lineTo(x1-ir,y-5*k+ir);ctx.stroke();
    txt(ctx,P.nm,x0,y,{s:14*k,w:800,c:col});y+=16*k+6;
    const pl=P.pl;txt(ctx,fitTxt(ctx,['Pace '+pl.pace+' · '+pl.min+' minutes a game · '+(pl.rest?pl.rest+' rest games':'no rest games'),'Pace '+pl.pace+' · '+pl.min+' min · '+pl.rest+' rest','Pace '+pl.pace+' · '+pl.min+' min'],iw,12*k,600),x0,y,{s:12*k,w:600,c:PAL['cv-ink']});y+=16*k+8;
-   txt(ctx,fitTxt(ctx,['Possessions on the court a game: '+f0(P.m.E),'Possessions a game: '+f0(P.m.E),'Possessions: '+f0(P.m.E)],iw,12*k,400),x0,y,{s:12*k,c:PAL['cv-soft']});y+=8;
-   ctx.fillStyle=PAL['cv-bg2'];rr(ctx,x0,y,iw,10,5);ctx.fill();ctx.fillStyle=col;rr(ctx,x0,y,Math.max(4,iw*Math.min(1,P.m.E/260)),10,5);ctx.fill();y+=22;
+   const hideE=!sh&&P.nm==='Your plan',Et=hideE?'?':f0(P.m.E);
+   txt(ctx,fitTxt(ctx,['Possessions on the court a game: '+Et,'Possessions a game: '+Et,'Possessions: '+Et],iw,12*k,hideE?700:400),x0,y,{s:12*k,w:hideE?700:400,c:hideE?PAL['rj']:PAL['cv-soft']});y+=8;
+   ctx.fillStyle=PAL['cv-bg2'];rr(ctx,x0,y,iw,10,5);ctx.fill();if(!hideE){ctx.fillStyle=col;rr(ctx,x0,y,Math.max(4,iw*Math.min(1,P.m.E/260)),10,5);ctx.fill();}y+=22;
    if(atLeast('honors')||sh){txt(ctx,fitTxt(ctx,['Risk per possession: ×'+f2(P.m.r/R0)+' the baseline','Risk per possession ×'+f2(P.m.r/R0),'Risk ×'+f2(P.m.r/R0)],iw,12*k,400),x0,y+10*k,{s:12*k,c:PAL['cv-soft']});y+=14*k+10;}
    /* season strip: 82 games in 2 rows of 41 */
    const cs=iw/41,ch=big?Math.min(12,cs+2):16,inj=sh?Math.round(P.m.ig):0,rest=pl.rest;
@@ -138,43 +196,36 @@ const SIM={
    txt(ctx,fitTxt(ctx,[f2(P.m.inj)+' injuries · '+f1(P.m.ig)+' games hurt · '+pl.rest+' rested',f2(P.m.inj)+' injuries a season',f2(P.m.inj)+' injuries'],iw,12*k,400),x0,y,{s:12*k,c:PAL['cv-ink']});y+=14*k+6;
    if(atLeast('honors')&&y<cB-6){txt(ctx,fitTxt(ctx,[f1(P.m.lam*1000)+' per 1,000 games · '+f3(P.m.r*1000)+' per 1,000 possessions',f1(P.m.lam*1000)+' per 1,000 games'],iw,12*k,400),x0,y,{s:12*k,c:PAL['cv-soft']});y+=14*k+6;}
    if(atLeast('honors')&&y<cB-6)txt(ctx,fitTxt(ctx,['Possessions played in the season: '+Math.round(P.m.seasonPoss).toLocaleString('en-US'),'Season possessions: '+Math.round(P.m.seasonPoss).toLocaleString('en-US')],iw,12*k,400),x0,y,{s:12*k,c:PAL['cv-soft']});});
-  /* legend for strip, small and above buttons only when room */
-  if(!sh){BTN.forEach((b,i)=>{const q=btnRect(i,sY,sH,X0,X1);ctx.fillStyle=PAL['card'];rr(ctx,q[0],q[1],q[2],q[3],9);ctx.fill();ctx.strokeStyle=PAL['rj'];ctx.lineWidth=2;ctx.stroke();
-    txt(ctx,fitTxt(ctx,['Your plan: '+b[1].toLowerCase(),b[1]],q[2]-12,12*k,700),q[0]+q[2]/2,q[1]+q[3]/2+1,{s:12*k,w:700,a:'center',b:'middle'});});return;}
-  const c=callNow(sim),a=ref(sim),m=mine(sim),d=a.missed-m.missed;
-  ctx.fillStyle=PAL['card2'];rr(ctx,X0,sY,X1-X0,sH,10);ctx.fill();
-  const msg=(c?('Your call: '+CALLW[c.pick]+'. '+(c.pick===c.truth?'That matches the model. ':'Not quite. ')):'')+'Your plan: '+f2(m.inj)+' injuries vs. '+f2(a.inj)+'. Games missed: '+f1(m.missed)+' vs. '+f1(a.missed)+(Math.abs(d)<0.05?', the same.':d>0?', '+f1(d)+' fewer.':', '+f1(-d)+' more.');
-  ctx.font='700 '+(12*k)+'px '+FONT;const two=ctx.measureText(msg).width>X1-X0-24;
-  wrap(ctx,msg,X0+12,sY+sH/2+4*k-(two?7*k:0),X1-X0-24,{s:12*k,w:700,c:c&&c.pick!==c.truth?PAL['s1']:PAL['cv-ink']});},
- onClick(sim,x,y){if(shown(sim)||view(sim)!=='season')return;const k=sim.vis&&sim.vis.k||1,{sH,sY}=geo(k);
-  BTN.forEach((b,i)=>{const q=btnRect(i,sY,sH,16,784);if(x>=q[0]&&x<=q[0]+q[2]&&y>=q[1]-4&&y<=q[1]+q[3]+4){BioLab.setValues(sim,{call:b[0]});SIM.actions[0].run(sim);}});},
+  stripDraw(ctx,sim,PS,X0,X1,sY,k);},
+ onClick(sim,x,y){if(shown(sim)||view(sim)!=='season')return;stripClick(sim,x,y);},
  narrate(sim){
   if(view(sim)==='acwr'){const c=acC(sim),u=acU(sim);return 'This week is '+sim.p.wkNow+' minutes against an average of '+sim.p.wkPrev+' the 3 weeks before. <b>The coupled ratio is '+f2(c)+'; the uncoupled ratio is '+f2(u)+'.</b> Same training, two answers, because the coupled version puts this week inside its own average. Researchers still argue about whether either one predicts injury.';}
   const m=mine(sim),a=ref(sim);
-  if(!shown(sim))return '<b>Make your call:</b> your player is on the court for about '+f0(m.E)+' possessions a game; the slow plan’s player, '+f0(a.E)+'. Does your plan cause more or fewer injuries over a season? Click your pick under the cards.';
+  if(!shown(sim)&&!ytDone(sim)){const y=ytNow(sim);return (y&&y.tries.length?'<b>Not quite.</b> ':'<b>Your turn:</b> ')+'the slow plan’s player is on the court for 2 × 90 × 40 ÷ 48 = 150 possessions a game. Compute yours: <b>2 × '+sim.p.pace+' × '+sim.p.min+' ÷ 48</b>, and click your answer at the bottom.';}
+  if(!shown(sim))return ytVerdict(sim)+' <b>Make your call:</b> your player is on the court for about '+f0(m.E)+' possessions a game; the slow plan’s player, '+f0(a.E)+'. Does your plan cause more or fewer injuries over a season? Click your pick at the bottom.';
   const c=callNow(sim),lead=c?(c.pick===c.truth?'<b>Your call matched the model.</b> ':'<b>Not quite.</b> '):'';
   const why='Injuries per game = risk per possession × possessions. Yours: ×'+f2(m.r/R0)+' risk × '+f0(m.E)+' possessions; the slow plan: ×'+f2(a.r/R0)+' × '+f0(a.E)+'.';
   const rest=sim.p.rest?' Your '+sim.p.rest+' rest games cut injuries a little but count as '+sim.p.rest+' games missed.':'';
   const era=sim.p.pace>=115?' This what-if applies today’s risk per possession to a 1960s-style workload; the game, shoes and medicine were different then.':'';
   return lead+why+' <b>Your plan: '+f1(m.missed)+' games missed a season; the slow plan: '+f1(a.missed)+'.</b>'+rest+era;},
  challenges:[
+  {lvl:'bio',instant:true,q:'A team plays at pace 110 and its star plays 30 minutes a game. About how many possessions is the star on the court for each game?',choices:['137.5','68.8','352','220'],correct:0,explain:'2 × 110 × 30 ÷ 48 = 6,600 ÷ 48 = 137.5. Forgetting the 2 (both teams’ possessions) gives 68.8; dividing the wrong way gives 352.'},
   {lvl:'bio',instant:true,q:'In 1961-62 the league pace was 126.2 possessions per 48 minutes. In 2025-26 it was 99.4. Which is true?',choices:['The 1960s game had about 27% more possessions','Today’s game is the fastest ever','They are about the same'],correct:0,explain:'126.2 ÷ 99.4 = 1.27, so the 1960s game had about 27% more possessions. Pace hit its lowest listed value, 88.9, in 1998-99, and has climbed back to about 99 since 2019.'},
-  {lvl:'bio',instant:true,q:'Same pace (100), but your player goes from 34 to 40 minutes a game, about 18% more. In this model, how much do injuries per game played rise?',choices:['About 38%: more possessions, and each one riskier','About 18%, the same as the minutes','Not at all'],correct:0,explain:'40 ÷ 34 = 1.18. Possessions rise 18%, and with tired legs each possession is 18% riskier: 1.18 × 1.18 = 1.38. Injuries per 1,000 games go from 16.0 to 22.1.'},
-  {lvl:'bio',instant:true,q:'Your player rests 10 healthy games (pace 100, 34 minutes). Injuries fall from 1.25 to 1.05 a season. What happens to total games missed?',choices:['It rises to about 13, because rest games count as missed','It falls, because injuries fall','It stays about 3.7'],correct:0,explain:'Injury games fall from 3.7 to 3.1, but the 10 rest games are missed too: 3.1 + 10 = 13.1. This is the trade the NBA’s Player Participation Policy is about.'},
+  {lvl:'bio',instant:true,q:'Same pace (100), but your player goes from 34 to 40 minutes a game, about 18% more. In this model, how much do injuries per game played rise?',choices:['About 38%','About 18%','0%'],correct:0,explain:'40 ÷ 34 = 1.18. Possessions rise 18%, and with tired legs each possession is 18% riskier: 1.18 × 1.18 = 1.38. Injuries per 1,000 games go from 16.0 to 22.1.'},
+  {lvl:'bio',instant:true,q:'Your player rests 10 healthy games (pace 100, 34 minutes). Injuries fall from 1.25 to 1.05 a season. What happens to total games missed?',choices:['About 13 games','About 3 games','About 3.7 games'],correct:0,explain:'Injury games fall from 3.7 to 3.1, but the 10 rest games are missed too: 3.1 + 10 = 13.1. This is the trade the NBA’s Player Participation Policy is about.'},
   {lvl:'honors',instant:true,q:'Your team speeds up from pace 92 to 100. Your player still plays 34 minutes. What happens to injuries per 1,000 possessions and per 1,000 games?',choices:['Per possession stays the same; per game rises about 9%','Both rise about 9%','Both stay the same'],correct:0,explain:'In this model risk per possession depends on minutes, which did not change, so it stays at 0.113 per 1,000. But there are 100 ÷ 92 = 1.087 times as many possessions, so injuries per 1,000 games rise from 14.7 to 16.0. The count rose; no play got riskier.'},
-  {lvl:'honors',instant:true,q:'One NBA study found 17.80 injuries and illnesses per 1,000 athlete game-exposures (2008-09 to 2018-19). Another found 28.20 per 1,000 game-exposures (2015 to 2018). How can both be right?',choices:['They counted injuries and exposures differently','One of them must be a mistake','Injuries rose 58% in a few years'],correct:0,explain:'Different data sources and definitions give different rates. Before comparing two rates, check what each one counts as an injury and as an exposure.'},
   {lvl:'honors',instant:true,q:'In the 17.80 study, exposure was counted by games played, not minutes. Player A plays 12 minutes a game and Player B plays 40. What does a per-game rate hide?',choices:['B is on the court more than 3 times as long','Nothing: a game is a game','A is more likely to get hurt'],correct:0,explain:'40 ÷ 12 = 3.3. Both count as one exposure per game, so per-game rates mix very different workloads. The authors noted that exposure could only be counted by games.'},
   {lvl:'ap',instant:true,q:'You trained an average of 300 minutes a week for 3 weeks, then 450 this week. What is the coupled acute:chronic ratio (this week ÷ the 4-week average)?',choices:['1.33','1.50','0.75','2.00'],correct:0,explain:'4-week average = (450 + 3 × 300) ÷ 4 = 337.5. 450 ÷ 337.5 = 1.33. The uncoupled ratio, 450 ÷ 300, is 1.50.'},
   {lvl:'ap',instant:true,q:'Gabbett (2016) called a ratio of 1.5 or more a “danger zone.” With the coupled ratio, a 1.5 matches what uncoupled ratio?',choices:['1.8','1.5','1.2','4.0'],correct:0,explain:'Coupled = 4u ÷ (u + 3). Set it to 1.5: 4u = 1.5u + 4.5, so u = 1.8. The two ways of computing the same idea put the cutoff in different places.'},
   {lvl:'ap',instant:true,q:'Suppose every week’s training were random and unrelated to other weeks. How correlated would this week be with the 4-week average that includes it?',choices:['About 0.5, from the shared week alone','0, since the weeks are unrelated','1, since they are the same data'],correct:0,explain:'This week is one quarter of the average. With equal, independent weeks, the correlation is (σ² ÷ 4) ÷ (σ × σ ÷ 2) = 0.5. That built-in link is the “mathematical coupling” critics point to.'}
  ],
  tour:[
-  {title:'The debate',text:'People say today’s game is faster and harder on bodies. Pace counts possessions per team per 48 minutes: 99.4 in 2025-26, 90.1 in 2003-04, and 126.2 in 1961-62. The 1960s were faster.',pause:true,setup(sim){BioLab.setValues(sim,{pace:100,min:34,rest:0,beta:1,fat:'min',view:'season'});sim.st.revealed=false;sim.st.call=null;}},
+  {title:'The debate',text:'People say today’s game is faster and harder on bodies. Pace counts possessions per team per 48 minutes: 99.4 in 2025-26, 90.1 in 2003-04, and 126.2 in 1961-62. The 1960s were faster.',pause:true,setup(sim){BioLab.setValues(sim,{pace:100,min:34,rest:0,beta:1,fat:'min',view:'season'});fresh(sim);}},
   {title:'Two plans',text:'Left: a slow plan, pace 90, with your top player on the court 40 minutes a game. Right: your plan, pace 100 and 34 minutes. Each strip is an 82-game season.',focus:[10,30,780,330],pause:true},
-  {title:'Count the exposures',text:'Every possession on the court is one exposure: one chance to get hurt. A game at pace 100 has about 200 possessions, 100 each way. Playing 34 of 48 minutes, your player is out there for 2 × 100 × 34 ÷ 48 ≈ 142. The slow plan’s player: 150.',focus:[10,30,780,330],pause:true},
+  {title:'Count the exposures',text:'Every possession on the court is one exposure: one chance to get hurt. A game at pace 90 has about 2 × 90 = 180 possessions, 90 each way. The slow plan’s player is out there 40 of 48 minutes: 2 × 90 × 40 ÷ 48 = 150 possessions a game.',focus:[10,30,780,330],pause:true},
   {title:'Tired legs',text:'In this model each possession gets riskier as minutes pile up: 40 minutes makes each one 40 ÷ 34 = 1.18 times as risky as 34 minutes. That size is an assumption for illustration.',pause:true},
-  {title:'Make your call',text:'Does your faster, shorter plan cause more or fewer injuries than the slow plan? Click your pick at the bottom, or press Next.',pause:true},
-  {title:'The reveal',text:'Your plan: 1.25 injuries and 3.7 games missed a season. The slow plan: 1.54 injuries and 4.6 games. The faster pace adds plays, but fewer tired minutes more than make up for it here.',pause:true,setup(sim){sim.st.revealed=true;}},
+  {title:'Your turn',text:'Your plan: pace 100, 34 minutes a game. First compute your player’s possessions, <b>2 × pace × minutes ÷ 48</b>, and click your answer at the bottom. Then make your call: does your plan cause more or fewer injuries than the slow plan? Or press Next to see the math.',pause:true,setup(sim){fresh(sim);}},
+  {title:'The reveal',text:'Your plan: 2 × 100 × 34 ÷ 48 = 141.7 possessions, each 34 ÷ 40 = 0.85 times as risky as in the slow plan. That gives 1.25 injuries and 3.7 games missed a season. The slow plan: 1.54 injuries and 4.6 games. The faster pace adds plays, but fewer tired minutes more than make up for it here.',pause:true,setup(sim){sim.st.revealed=true;}},
   {title:'Resting healthy games',text:'Now your player sits 10 healthy games. Injuries fall to 1.05, but total games missed jumps to 13.1, because rest games are missed games too. An NBA-commissioned review of 10 seasons did not find that rest clearly lowered later injury risk.',pause:true,setup(sim){BioLab.setValues(sim,{rest:10});sim.st.revealed=true;}},
   {lvl:'ap',title:'The workload ratio',text:'Teams also watch the acute:chronic workload ratio: this week’s load ÷ recent weeks. Here 450 minutes after three 300-minute weeks gives 1.33 coupled or 1.50 uncoupled. Researchers dispute whether it predicts injury at all.',pause:true,setup(sim){BioLab.setValues(sim,{rest:0,view:'acwr',wkPrev:300,wkNow:450});}}
  ],
@@ -241,6 +292,8 @@ BioLab.addReview({paceload:{questions:[
  {id:'rest',kind:'real',lvl:'bio',q:'At pace 100 and 34 minutes, your player rests 10 healthy games. In this model, about how many total games does the player miss?',choices:['About 13','About 3','About 10','About 1'],correct:0,
   steps:['Rest games: 10.','Injuries fall to about 1.05, at 3 games each: about 3.1 games.','10 + 3.1 = 13.1 games missed, against 3.7 with no rest games.'],
   lab:{set:{pace:100,min:34,rest:10},act:'show',look:'Read <b>Games missed per season, your plan</b>.'},verify:[['gm',13.14,0.05],['inj',1.047,0.005]]},
+ {id:'defs',kind:'real',lvl:'honors',q:'One NBA study found 17.80 injuries and illnesses per 1,000 athlete game-exposures (2008-09 to 2018-19). Another found 28.20 per 1,000 game-exposures (2015 to 2018). How can both be right?',choices:['They counted injuries and exposures differently','One of them must be a mistake','Injuries rose 58% in a few years','Rates cannot be compared'],correct:0,
+  steps:['Different data sources and definitions give different rates.','28.20 ÷ 17.80 = 1.58, so a reader who ignored the definitions would see a 58% jump.','Before comparing two rates, check what each one counts as an injury and as an exposure.']},
  {id:'ae',kind:'test',lvl:'honors',q:'A team has 15 injuries in 840 athlete-exposures. What is the rate per 1,000 athlete-exposures?',num:{ans:17.86,tol:0.02,unit:'per 1,000'},
   steps:['Rate = injuries ÷ exposures × 1,000.','15 ÷ 840 = 0.01786.','× 1,000 = 17.86 per 1,000 athlete-exposures.']},
  {id:'rate',kind:'real',lvl:'honors',q:'Your team speeds up from pace 92 to 100 with your player at 34 minutes. By what percent do injuries per 1,000 games rise, and what happens per 1,000 possessions?',choices:['About 9% per game; no change per possession','About 9% for both','No change for either','About 18% per game; 9% per possession'],correct:0,
