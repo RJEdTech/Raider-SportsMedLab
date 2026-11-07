@@ -73,7 +73,7 @@ BioLab.COURSES = [
   ]
  }
 ];
-BioLab.TOPIC_ORDER = {"0": ["bodymap", "movements", "skeleton", "muscles"], "1": ["kineticchain", "injury"], "2": ["concussion", "neuroexam"], "3": ["joints", "mmt", "clinic"], "11": ["contraction"]};
+BioLab.TOPIC_ORDER = {"0": ["bodymap", "movements", "skeleton", "muscles"], "1": ["kineticchain", "injury"], "2": ["concussion", "neuroexam", "racenorm"], "3": ["joints", "mmt", "clinic"], "11": ["contraction"]};
 BioLab.setSections({units:{},extra:{"0": "Body basics", "1": "Injury and rehabilitation", "2": "Head and neuro", "3": "Joints and evaluation", "11": "Go further"},order:[0, 1, 2, 3, 11],further:11,unitPrefix:''});
-(function(){const P={"bodymap": 0, "movements": 0, "skeleton": 0, "muscles": 0, "kineticchain": 1, "injury": 1, "concussion": 2, "neuroexam": 2, "joints": 3, "mmt": 3, "clinic": 3, "contraction": 11};BioLab.defs.forEach(d=>{if(P[d.id]!==undefined)d.apUnit=P[d.id];});
+(function(){const P={"bodymap": 0, "movements": 0, "skeleton": 0, "muscles": 0, "kineticchain": 1, "injury": 1, "concussion": 2, "neuroexam": 2, "joints": 3, "mmt": 3, "clinic": 3, "contraction": 11, "racenorm": 2};BioLab.defs.forEach(d=>{if(P[d.id]!==undefined)d.apUnit=P[d.id];});
 const keep=new Set(BioLab.defs.map(d=>d.id));BioLab.defs.forEach(d=>{['prereq','next'].forEach(k=>{if(d[k])d[k]=d[k].filter(i=>keep.has(i));});});})();
