@@ -1,7 +1,7 @@
 /* Raider SportsMedLab: course order comes from the course's Canvas modules. */
 BioLab.COURSES = [
  {
-  "id": "spat",
+  "id": "spat",finals:[{"t": "Athletic Training fall final review", "units": [0, 1, 2, 3, 4, 5, 6], "note": "Covers body terms through the ankle and foot. Your teacher decides what is on the final, so check the study guide."}],
   "name": "Scientific Principles of Athletic Training",
   "blurb": "Tools in the order SPAT covers them: foundations, then upper body, then lower body.",
   "further": [
