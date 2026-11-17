@@ -11,7 +11,7 @@ BioLab.addPractical({mmt:{
   'Now run the test on the uninvolved side, then on the other side. A weak finding only means something when you compare it with that athlete’s other side.']
 }});
 BioLab.addReview({mmt:{questions:[
- {id:'pocket',kind:'test',lvl:'bio',q:'You are testing Pectoralis Major, Lower. What is the instruction on your sheet?',choices:['Instruct patient to punch the person standing behind them','Instruct patient to "punch" the person next to them','Instruct patient to put something in the opposite pocket','Instruct patient to move into shoulder flexion against you'],correct:2,
+ {id:'pocket',kind:'test',lvl:'bio',q:'You are testing Pectoralis Major, Lower. What is the instruction on your sheet?',choices:['Instruct patient to punch the person behind them','Instruct patient to "punch" the person next to them','Instruct patient to put something in the opposite pocket','Instruct patient to move into shoulder flexion'],correct:2,
   steps:['All three Pectoralis Major tests use the same position (supine) and hands. Only the command changes.','Upper fibers: punch the person behind them. Middle fibers: “punch” the person next to them.','Lower fibers run from the lower sternum and ribs up to the humerus, so they pull the arm down and across: the opposite pocket.'],
   lab:{set:{view:'learn',tm:'pecL'},look:'Pectoralis Major, Lower is showing. Watch the arm move toward the opposite hip.'}},
  {id:'semi',kind:'test',lvl:'bio',q:'Both hamstring tests say “bring their heel to their butt” in the prone position. What is different about Biceps Femoris?',choices:['The knee stays straight','The tibia is in ER, not IR','The patient is seated upright','No resistance is used'],correct:1,
