@@ -20,7 +20,7 @@ joints:{
     lab:{set:{view:'stress',joint:'knee',fk:'fromlat',bone:'femur',flex:30,F:60},look:'The foot is planted and the force lands from the lateral side. Read the top strain bar.'},verify:[['strain',9,.2]]},
   {id:'dashboard',kind:'real',lvl:'bio',
     q:'In a car crash, a passenger’s bent knee hits the dashboard. Which ligament is injured, and why?',
-    choices:['ACL, because the tibia moves forward','PCL, because the tibia is driven backward','MCL, because the knee bends inward','LCL, because the knee bows outward'],correct:1,
+    choices:['ACL, because the tibia moves forward','PCL, because the tibia is driven back','MCL, because the knee bends inward','LCL, because the knee bows outward'],correct:1,
     steps:['The dashboard pushes the top of the shin backward while the femur keeps moving forward.','So the tibia slides posterior relative to the femur.','The PCL stops the tibia moving backward, so the PCL is loaded. This is called the dashboard injury.'],
     lab:{set:{view:'stress',joint:'knee',fk:'post',bone:'tibia',flex:90,F:70},look:'The tibia is pushed backward at 90° of flexion. Read which ligament is loaded.'},verify:[['strain',7.7,.2]]},
   {id:'inversion',kind:'test',lvl:'bio',
