@@ -13,6 +13,10 @@ concussion: {
   ],
   stops: 'Sports medicine can measure balance, memory and symptoms, and it can lay out a safe return plan. It cannot decide how much risk is worth taking for a game, or what a season is worth compared with a brain. Those are judgments about value, made by people.',
   church: 'The Church teaches that life and health are gifts entrusted to us, to be cared for reasonably (Catechism no. 2288). It also warns against idolizing physical perfection and success at sports, which can lead us to prefer the strong over the weak (no. 2289). The body shares in the dignity of being made in God’s image: an athlete is a person, not a piece of equipment (nos. 364–365).',
+  faith: { items: [
+    { who: 'St. Pier Giorgio Frassati', when: 'mountaineer, 1901–1925; canonized September 7, 2025', says: 'A climber and athlete who loved the mountains and cared for the poor of Turin. His motto, “Verso l’alto” (“to the heights”), is about aiming high in faith as well as on the trail.' },
+    { who: 'Giving the Best of Yourself', when: 'the Vatican’s first document on sport, 2018', says: 'It says the Church cares about sport because it cares about the whole person, and it warns against pressure to win “at all costs” that treats athletes as less than persons.' }
+  ] },
   views: [
     { who: 'The athlete', when: 'any sideline', says: 'It is my body and my team. I know how I feel, and I should get a say in whether I play.' },
     { who: 'The Athletic Trainer', when: 'the professional on the sideline', says: 'When in doubt, sit them out. My job is to protect the person even when they are pushing to go back in.' },
