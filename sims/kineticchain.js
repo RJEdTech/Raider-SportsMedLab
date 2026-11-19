@@ -113,7 +113,7 @@ const SIM={
      check(m,h){return Math.abs(m.ankleM-h.ankleM)<1;},
      explain:'The ankle moment depends on how far the center of mass sits ahead of the ankle, and balance pins that. The joint that failed shows little extra load. That’s why pain leads you to the wrong place if you stop at the gauge that’s high.'},
     {lvl:'ap',instant:true,q:'In an overhead squat, thoracic mobility drops from 100% to 0%. What changes first?',
-     choices:['Squat depth drops first','Arms drift forward; shoulder blade and low back work harder','The hip moment doubles to compensate'],correct:1,base:{over:true},set:{over:true,thor:0},
+     choices:['Squat depth drops first, as the knees stop bending','Arms drift forward; shoulder blade and low back work harder','The hip moment doubles to make up for the lost motion'],correct:1,base:{over:true},set:{over:true,thor:0},
      check(m,h){return m.drift>5&&m.back>m.backBase*(1+m.q.lam/30)*1.01&&m.scap>30;},
      explain:'Trunk lean has to be undone somewhere for the arms to stay vertical. A stiff thoracic spine can’t extend, so the shoulder blade and lumbar spine, both stability joints, take over. That’s the same rule one level up the chain.'}
   ],

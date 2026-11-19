@@ -124,7 +124,7 @@ const SIM={
     {id:'placed',views:['plan'],label:'Steps in your plan',unit:'of 8',lvl:'bio',min:0,max:8,d:0,noTrial:true,get:s=>s.st.plan.length}
   ],
   challenges:[
-    {lvl:'bio',instant:true,q:'A ligament takes a load of 60% of its tensile limit once, in tension. What happens?',choices:['It snaps under the load right away','It stretches; some fibers may be damaged, but it holds','Nothing at all happens, ever'],correct:1,base:{view:'forces',tissue:'ligament',force:'tension',load:60,reps:'1'},
+    {lvl:'bio',instant:true,q:'A ligament takes a load of 60% of its tensile limit once, in tension. What happens?',choices:['It snaps under the load right away, all at once','It stretches; some fibers may be damaged, but it holds','Nothing happens; ligaments only fail under compression'],correct:1,base:{view:'forces',tissue:'ligament',force:'tension',load:60,reps:'1'},
      check:s=>{const f=forceState(s.p);return !f.failed&&f.state==='Plastic';},explain:'A load under the limit doesn’t tear the tissue through. Past the elastic range, though, some fibers are damaged and it won’t quite spring back. That’s a grade I stretch.'},
     {lvl:'bio',instant:true,q:'That same 60% load repeats 100,000 times with no recovery. What’s the likely result?',choices:['No change, since it was safe once','The limit falls until it fails: a chronic injury','The tissue always gets stronger with every repeat'],correct:1,base:{view:'forces',tissue:'bone',force:'tension',load:60,reps:'1'},set:{reps:'100000'},
      check:s=>forceState(s.p).chronic,explain:'Every repeat leaves a little damage. Without recovery, the limit falls until a load that was safe once causes failure. In bone that’s a stress fracture, and it’s why acute and chronic injuries have different causes.'},
